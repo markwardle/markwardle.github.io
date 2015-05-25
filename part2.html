@@ -1,0 +1,41 @@
+<h1 id="how-to-properly-set-up-a-php-application-with-composer-and-deploy-it-to-heroku---part-2">How to properly set up a PHP application with composer and deploy it to Heroku - Part 2</h1>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<p>This guide assumes that you have PHP installed on your system. This guide assumes at least PHP 5.5, but that doesn't mean it won't work on PHP 5.4. If you are using an earlier version of PHP and something doesn't work you can either update your PHP installation to a newer version or adapt this guide to your requirements. This guide isn't meant to give you one specific way of setting this up, but rather a general approach to doing so. Adapt as needed.</p>
+<h3 id="setting-up-git">Setting up git</h3>
+<p>We are going to use git as our version control system. There are two reasons for this. The first is that it's just a good idea to use a version control system and git is a popular one. The second is that we plan on deploying our application to Heroku, and Heroku uses git for deployment.</p>
+<p>The first thing we need to do is to create a new project directory. Open up your terminal, use the <code>cd</code> command to navigate to the directory in which you keep your projects, and run the following commands to create the directory and intialize the git repository:</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">mkdir</span> myblog
+$ <span class="kw">cd</span> myblog
+$ git init</code></pre>
+<p>Now that we have our directory and our repository initialized, we should add a file and make our initial commit. For the most part we will be working in an editor rather than the command line, but for this task we will create a file using the terminal. Issue the following commands to create nh <code>AUTHORS</code> file and then commit it.</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">echo</span> <span class="st">&quot;Your Name Here&quot;</span> <span class="kw">&gt;</span> AUTHORS
+$ git add AUTHORS
+$ git commit -m <span class="st">&quot;Initial commit with AUTHORS file.&quot;</span></code></pre>
+<h3 id="installing-composer">Installing composer</h3>
+<p>The next thing we need to do is to install Composer, the PHP package manager. You can install composer globally or locally, but for this project we will install it globally. This guide provides one method utilizing curl. If you don't have curl, would like to set up composer locally, have any problems, or just want to know more about Composer, you can visit it's <a href="http://getcomposer.org">home page</a>.</p>
+<p>Run the following in your terminal:</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ curl -sS https://getcomposer.org/installer <span class="kw">|</span> php</code></pre>
+<p>After the script runs compser should be installed you can verify that it is working by running <code>composer --version</code>. For me, the result looks something like this:</p>
+<div class="figure">
+<img src="images/composer-success.png" alt="Composer Version" /><p class="caption">Composer Version</p>
+</div>
+<p>If you see something similar then composer is good to go. We will be using it quite a bit to get the components that we need for our project.</p>
+<h3 id="setting-up-the-directory-structure">Setting up the directory structure</h3>
+<p>The directory structure we will be using is pretty simple. For security reasons, we don't want to put our application code within reach of the web. We also want our application to have a single point of entry into our application. As such, we will create a <code>public/</code> directory within our project's root directory which we will configure with the server to be our document root. Within this directory we will put all of our public files (images, stylesheets, client-side scripts) as well as a single <code>app.php</code> file (you can name it whatever you want). No other php script will be within this directory or any of its sub-directories.</p>
+<p>The majority of our application specific code will reside in a 'src/' directory including our models and controllers. We will also need directories for configuration, templates, and command line scripts. Go ahead and create directories and files so that it looks like the following:</p>
+<pre><code>├── AUTHORS
+├── bin/
+├── cache/
+│   └── templates/
+├── config/
+├── db/
+├── public/
+│   ├── app.php
+│   ├── images/
+│   ├── js/
+│   └── styles/
+├── src/
+├── templates/
+└── tests/</code></pre>
+<p>With that out of the way, we are ready to start building our application.</p>

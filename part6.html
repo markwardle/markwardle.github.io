@@ -1,0 +1,135 @@
+<h2 id="hooking-up-the-database">Hooking up the database</h2>
+<p>There are several tools that we could use to interact with the database. For this tutorial we are going to use a tool called <a href="http://www.redbeanphp.com/">RedBean</a> which provides a very simple way to create your database schema (it does it all for you!) and to interact with your database entities.</p>
+<p>Additionally, we are going to use SQLite as our database. This may not be the best choice for a production environment, but will work just fine for this tutorial. If you want to use another database, just read RedBean's documentation to figure out how to do so.</p>
+<h3 id="installing-a-database-component">Installing a database component</h3>
+<p>Let's add RedBean to our project.</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ composer require gabordemooij/redbean</code></pre>
+<p>One challenge with this particular library is that it tends to assume that you are utilizing it through a static facade. This is really convenient, but not ideal when we want to start testing our application. It is possible to use RedBean without the facade, though also inconvenient. To get around this problem, we are going to create our own database class and use PHP's magic <code>__call</code> method to automatically forward method calls to RedBean.</p>
+<p>Create a <code>Database.php</code> file in the src directory with this code:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace<span class="ot">;</span>
+
+<span class="kw">class</span> Database
+{
+   <span class="co">/**</span>
+    * <span class="co">Forwards</span> <span class="co">calls</span> <span class="co">to</span> <span class="co">RedBean</span><span class="st">&#39;s facade</span>
+<span class="st">    */</span>
+<span class="st">    public function __call($methodName, array $args)</span>
+<span class="st">    {</span>
+<span class="st">        $methodToCall = &#39;</span><span class="co">RedBeanPHP</span>\<span class="co">R</span>::<span class="st">&#39; . $methodName;</span>
+<span class="st">        return call_user_func_array($methodToCall, $args);</span>
+<span class="st">    }</span>
+<span class="st">}</span></code></pre>
+<p>Now, let's configure our database in our <code>app.php</code> file. Put the following in in the file after thr code that creates the container but before the routing code:</p>
+<pre class="sourceCode php"><code class="sourceCode php">// add the database to the container
+$container-&gt;singleton(&#39;database&#39;, function() use ($container) {
+    define( &#39;REDBEAN_MODEL_PREFIX&#39;, &#39;YourNamespace\\Model\\&#39; )
+    $db = new YourNamespace\Database();
+    $dsn = &#39;sqlite:&#39; . dirname(__DIR__) . &#39;/db/myblog.sqlite3&#39;;
+    $db-&gt;setup($dsn);
+    return $db;
+});
+
+// alias the database with its class name
+$container-&gt;add(&#39;YourNamespace\Database&#39;, function() use ($container){
+    return $container-&gt;get(&#39;database&#39;);
+});</code></pre>
+<p>Great. Let's make the models for our application. Before that though, go ahead and make a command and then let's add another dependency to our application. This one's a library that helps doing tasks with strings. It's called <a href="https://github.com/danielstjules/Stringy">Stringy</a>.</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ composer require danielstjules/stringy</code></pre>
+<h3 id="creating-models">Creating models</h3>
+<p>Create a directory named <code>Model</code> in the <code>src</code> directory. We will first create a base model class that will extend RedBean's model class. The reason we are doing this is so we can later add or modify functionality that applies to all of our models without having to modify RedBean's code. Our model gives an example of this by setting timestamps for each model on create and update.</p>
+<p>Put the following code in a <code>BaseModel.php</code> file in the Model directory:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Model<span class="ot">;</span>
+
+<span class="kw">use</span> RedBeanPHP\SimpleModel<span class="ot">;</span>
+
+<span class="kw">class</span> BaseModel <span class="kw">extends</span> SimpleModel
+{
+    <span class="kw">protected</span> <span class="kw">function</span> getDateTimeString<span class="ot">(</span><span class="kw">$timestamp</span> = <span class="kw">null</span><span class="ot">,</span> <span class="kw">$format</span> = <span class="st">&#39;Y-m-d H:i:s&#39;</span><span class="ot">)</span>
+    {
+        <span class="kw">return</span> data<span class="ot">(</span><span class="kw">$format</span><span class="ot">,</span> <span class="kw">$timestamp</span> <span class="ot">?</span> <span class="kw">$timestamp</span> <span class="ot">:</span> <span class="fu">time</span><span class="ot">());</span>
+    }
+
+   <span class="co">/**</span>
+    * <span class="co">This</span> <span class="co">function</span> <span class="co">is</span> <span class="co">run</span> <span class="co">every</span> <span class="co">time</span> <span class="co">a</span> <span class="co">bean</span> <span class="co">is</span> <span class="co">saved</span>
+    <span class="co">*/</span>
+    <span class="kw">public</span> <span class="kw">function</span> update<span class="ot">()</span>
+    {
+        <span class="co">// Set timestamps for every row of every table</span>
+        <span class="kw">$timeString</span> = <span class="kw">$this</span>-&gt;getDateTimeString<span class="ot">();</span>
+        <span class="kw">if</span> <span class="ot">(</span><span class="kw">NULL</span> === <span class="kw">$this</span>-&gt;bean-&gt;getID<span class="ot">())</span> {
+            <span class="kw">$this</span>-&gt;bean-&gt;created = <span class="kw">$timeString</span><span class="ot">;</span>
+        }
+        <span class="kw">$this</span>-&gt;been-&gt;updated = <span class="kw">$timeString</span><span class="ot">;</span>
+    }
+}</code></pre>
+<p>Our simple application is only going to use three database tables, one for users, one for posts, and one for tags. Lets start with the users model. Create a file called <code>User.php</code> in the <code>Model</code> directory with the following content:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Model<span class="ot">;</span>
+
+<span class="kw">class</span> User <span class="kw">extends</span> BaseModel
+{
+    <span class="kw">public</span> <span class="kw">function</span> setPassword<span class="ot">(</span><span class="kw">$password</span><span class="ot">)</span>
+    {
+        <span class="kw">$this</span>-&gt;bean-&gt;password = password_hash<span class="ot">(</span><span class="kw">$password</span><span class="ot">,</span> <span class="kw">PASSWORD_BCRYPT</span><span class="ot">);</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> passwordIsCorrect<span class="ot">(</span><span class="kw">$password</span><span class="ot">)</span>
+    {
+        <span class="kw">return</span> password_verify<span class="ot">(</span><span class="kw">$password</span><span class="ot">,</span> <span class="kw">$this</span>-&gt;bean-&gt;password<span class="ot">);</span>
+    }
+}</code></pre>
+<p>Next, we should to make a trait to generate slugs to avoid code repetition. Create a new directory inside the <code>Model</code> directory named <code>Trait</code>. In that directory, add a file named <code>Sluggable.php</code> with the following content:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Model\Trait<span class="ot">;</span>
+
+<span class="kw">use</span> Stringy\Stringy <span class="kw">as</span> <span class="kw">S</span><span class="ot">;</span>
+
+trait Sluggable
+{
+    <span class="kw">protected</span> <span class="kw">function</span> verifySlug<span class="ot">(</span><span class="kw">$slugifyField</span><span class="ot">)</span>
+    {
+        <span class="kw">if</span> <span class="ot">(</span>!<span class="kw">$this</span>-&gt;bean-&gt;slug<span class="ot">)</span> {
+            <span class="kw">$this</span>-&gt;bean-&gt;slug = <span class="kw">S</span>::create<span class="ot">(</span><span class="kw">$this</span>-&gt;bean-&gt;<span class="kw">$slugifyField</span><span class="ot">)</span>-&gt;slugify<span class="ot">()</span>-&gt;<span class="fu">__toString</span><span class="ot">();</span>
+        }
+    }
+}</code></pre>
+<p>Now we can create our post and tag models in a <code>Post.php</code> and <code>Tag.php</code> file (respectively) within the <code>Model</code> directory. The look very similar.</p>
+<p>The post model:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Model<span class="ot">;</span>
+
+<span class="kw">class</span> Post <span class="kw">extends</span> BaseModel
+{
+    <span class="co">// add the trait to the model</span>
+    <span class="kw">use</span> YourNamespace\Model\Trait\Sluggable<span class="ot">;</span>
+
+    <span class="kw">public</span> <span class="kw">function</span> update<span class="ot">()</span>
+    {
+        <span class="kw">$this</span>-&gt;verifySlug<span class="ot">(</span><span class="st">&#39;title&#39;</span><span class="ot">);</span>
+        <span class="kw">parent</span>::update<span class="ot">();</span>
+    }
+}</code></pre>
+<p>The tag model:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Model<span class="ot">;</span>
+
+<span class="kw">class</span> Tag <span class="kw">extends</span> BaseModel
+{
+    <span class="co">// add the trait to the model</span>
+    <span class="kw">use</span> YourNamespace\Model\Trait\Sluggable<span class="ot">;</span>
+
+    <span class="kw">public</span> <span class="kw">function</span> update<span class="ot">()</span>
+    {
+        <span class="kw">$this</span>-&gt;verifySlug<span class="ot">(</span><span class="st">&#39;name&#39;</span><span class="ot">);</span>
+        <span class="kw">parent</span>::update<span class="ot">();</span>
+    }
+}</code></pre>
+<p>We've got our models all set up. We will use them really soon, I promise. There are just a few things we need to do first. Commit your code and keep going.</p>

@@ -1,0 +1,33 @@
+<h2 id="sessions">Sessions</h2>
+<p>Sessions allow your application to store data pertaining to a specific user. We will need to utilize sessions to keep our user logged in. We don't need to add anything new packages since Symfony's HttpFoundation package also includes an object to handle sessions.</p>
+<p>This section is going to be short since all we need to do is to subclass Symfony's session handler with a couple extra methods and to register it with the container.</p>
+<p>Create a file named <code>Session.php</code> in the <code>src</code> directory with this code:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace<span class="ot">;</span>
+
+<span class="kw">use</span> Symfony\Component\HttpFoundation\Session\Session <span class="kw">as</span> SymfonySession<span class="ot">;</span>
+<span class="kw">use</span> YourNamespace\Model\User<span class="ot">;</span>
+
+<span class="kw">class</span> Session <span class="kw">extends</span> SymfonySession
+{
+    <span class="kw">public</span> <span class="kw">function</span> setUser<span class="ot">(</span>User <span class="kw">$user</span><span class="ot">)</span>
+    {
+        <span class="kw">$this</span>-&gt;<span class="fu">set</span><span class="ot">(</span><span class="st">&#39;user&#39;</span><span class="ot">,</span> <span class="ot">[</span>
+            <span class="st">&#39;name&#39;</span> =&gt; <span class="kw">$user</span>-&gt;name<span class="ot">,</span>
+            <span class="st">&#39;email&#39;</span> =&gt; <span class="kw">$user</span>-&gt;email<span class="ot">,</span>
+        <span class="ot">]);</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> userIsLoggedIn<span class="ot">()</span>
+    {
+        <span class="kw">return</span> <span class="kw">null</span> != <span class="kw">$this</span>-&gt;get<span class="ot">(</span><span class="st">&#39;user&#39;</span><span class="ot">);</span>
+    }
+}</code></pre>
+<p>Now add the session to the container in the app.php file (just after the code that registers the request object).</p>
+<pre class="sourceCode php"><code class="sourceCode php">// Add the session to the container and alias it by class name
+$container-&gt;singleton(&#39;session&#39;, &#39;YourNamespace\Session&#39;);
+$container-&gt;add(&#39;YourNamespace\Session&#39;, function() use ($container) {
+    return $container-&gt;get(&#39;session&#39;);
+});</code></pre>
+<p>Short and sweet. Let's keep going.</p>

@@ -1,0 +1,137 @@
+<h2 id="routing">Routing</h2>
+<p>Because we are using a single point of entry into our application, we will need to route incoming url paths to specific actions within our application. This is called routing. There are plenty of routers out there, but for this application we will utilize one maintained by the <a href="http://route.thephpleague.com/">The League of Extraordinary Packages</a>.</p>
+<h3 id="installing-and-configuring-the-router">Installing and configuring the router</h3>
+<p>To install the router using Composer, enter the following command in your terminal from the your application root.</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ composer require league/route</code></pre>
+<p>Composer will then fetch the library and all of its dependencies. Since we already have our autoloader set up, there is nothing further we need to do to start using the package.</p>
+<p>If you read the documentation for the component, you will notice that it allows for several strategies for dispatching routes. For this tutorial we are going to write our own strategy which is a combination of the provided method argument strategy and uri strategy.</p>
+<p>The route component requires that the dispatching strategy implements <code>Leauge\Route\Strategy\StrategyInterface</code>. It also provides an abstract class that we can extend which will make writing our strategy really easy.</p>
+<p>Create a new folder in the projects <code>src</code> directory called <code>Routing</code>. Within that directory create a file called <code>Strategy.php</code>. In this file we will create our routing strategy class. You should choose a base vendor namespace that you will use for your project. In the code when you see 'YourNamespace' in a namespace, you should replace it with whatever you want. I use 'Wardlem'.</p>
+<p>Add the following code to the file.</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Routing<span class="ot">;</span>
+
+<span class="kw">use</span> League\Route\Strategy\AbstractStrategy<span class="ot">;</span>
+<span class="kw">use</span> League\Route\Strategy\StrategyInterface<span class="ot">;</span>
+
+<span class="kw">class</span> Strategy <span class="kw">extends</span> AbstractStrategy <span class="kw">implements</span> StrategyInterface
+{
+
+    <span class="kw">protected</span> <span class="kw">function</span> processVars<span class="ot">(</span><span class="fu">array</span> <span class="kw">$vars</span><span class="ot">)</span> {
+
+        <span class="kw">$container</span> = <span class="kw">$this</span>-&gt;getContainer<span class="ot">();</span>
+        <span class="kw">$router</span> = <span class="kw">$container</span>-&gt;get<span class="ot">(</span><span class="st">&#39;router&#39;</span><span class="ot">);</span>
+
+        <span class="kw">foreach</span><span class="ot">(</span><span class="kw">$vars</span> <span class="kw">as</span> <span class="kw">$key</span> =&gt; <span class="kw">$value</span><span class="ot">)</span> {
+            <span class="kw">if</span> <span class="ot">(</span><span class="kw">$router</span>-&gt;hasProcessor<span class="ot">(</span><span class="kw">$key</span><span class="ot">))</span> {
+                <span class="kw">$processor</span> = <span class="kw">$router</span>-&gt;getProcessor<span class="ot">(</span><span class="kw">$key</span><span class="ot">);</span>
+                <span class="kw">$processedValue</span> = <span class="kw">$container</span>-&gt;call<span class="ot">(</span><span class="kw">$processor</span><span class="ot">,</span> <span class="ot">[</span><span class="kw">$key</span> =&gt; <span class="kw">$value</span><span class="ot">]);</span>
+                <span class="kw">$vars</span><span class="ot">[</span><span class="kw">$key</span><span class="ot">]</span> = <span class="kw">$processedValue</span><span class="ot">;</span>
+            }
+        }
+
+        <span class="kw">return</span> <span class="kw">$vars</span><span class="ot">;</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> dispatch<span class="ot">(</span><span class="kw">$controller</span><span class="ot">,</span> <span class="fu">array</span> <span class="kw">$vars</span><span class="ot">)</span>
+    {
+
+        <span class="kw">$vars</span> = <span class="kw">$this</span>-&gt;processVars<span class="ot">(</span><span class="kw">$vars</span><span class="ot">);</span>
+
+        <span class="kw">if</span> <span class="ot">(</span><span class="fu">is_array</span><span class="ot">(</span><span class="kw">$controller</span><span class="ot">)</span> &amp;&amp; <span class="fu">is_string</span><span class="ot">(</span><span class="kw">$controller</span><span class="ot">[</span><span class="dv">0</span><span class="ot">]))</span> {
+            <span class="kw">$controller</span><span class="ot">[</span><span class="dv">0</span><span class="ot">]</span> = <span class="kw">$this</span>-&gt;getContainer<span class="ot">()</span>-&gt;get<span class="ot">(</span><span class="kw">$controller</span><span class="ot">[</span><span class="dv">0</span><span class="ot">]);</span>
+        }
+
+        <span class="kw">$response</span> = <span class="kw">$this</span>-&gt;getContainer<span class="ot">()</span>-&gt;call<span class="ot">(</span><span class="kw">$controller</span><span class="ot">,</span> <span class="kw">$vars</span><span class="ot">);</span>
+        <span class="kw">return</span> <span class="kw">$this</span>-&gt;determineResponse<span class="ot">(</span><span class="kw">$response</span><span class="ot">);</span>
+    }
+}</code></pre>
+<p>What this strategy does is that it allows use to create handler functions (i.e. controllers) for our routes that will have their methods automatically resolved according to class type hints and parameter names. It will also preprocess route parameters for us so that we don't have to do it manually in our controllers. This will make more sense in a moment.</p>
+<p>Additionally, we are going to extend the router so that we can add some custom functionality. When you need custom functionality, you should never alter the library code. You should always create your own class and extend it.</p>
+<p>Create a <code>Router.php</code> file in the same directory as the strategy with the following contents.</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Routing<span class="ot">;</span>
+
+<span class="kw">use</span> League\Route\RouteCollection<span class="ot">;</span>
+
+<span class="kw">class</span> Router <span class="kw">extends</span> RouteCollection
+{
+    <span class="kw">protected</span> <span class="kw">$processors</span> = <span class="ot">[];</span>
+
+    <span class="kw">public</span> <span class="kw">function</span> addProcessor<span class="ot">(</span><span class="kw">$routeKey</span><span class="ot">,</span> callable <span class="kw">$processor</span><span class="ot">)</span>
+    {
+        <span class="kw">$this</span>-&gt;processors<span class="ot">[</span><span class="kw">$routeKey</span><span class="ot">]</span> = <span class="kw">$processor</span><span class="ot">;</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> hasProcessor<span class="ot">(</span><span class="kw">$routeKey</span><span class="ot">)</span>
+    {
+        <span class="kw">return</span> <span class="fu">isset</span><span class="ot">(</span><span class="kw">$this</span>-&gt;processors<span class="ot">[</span><span class="kw">$routeKey</span><span class="ot">]);</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> getProcessor<span class="ot">(</span><span class="kw">$routeKey</span><span class="ot">)</span>
+    {
+        <span class="kw">return</span> <span class="kw">$this</span>-&gt;processors<span class="ot">[</span><span class="kw">$routeKey</span><span class="ot">];</span>
+    }
+}</code></pre>
+<p>We need to create the routing code in our <code>app.php</code> file. At the end of the file, add the following:</p>
+<pre class="sourceCode php"><code class="sourceCode php">// create the router and add it to the container
+$router = new YourNamespace\Routing\Router($container);
+$router-&gt;setStrategy(new YourNamespace\Routing\Strategy());
+$container-&gt;add(&#39;router&#39;, $router);
+$container-&gt;add(&#39;YourNamespace\Routing\Router&#39;, $router);
+
+// load the routes for the application
+require dirname(__DIR__) . &#39;/config/routes.php&#39;;
+
+// dispatch the request to the router and return the response to the client
+$dispatcher = $router-&gt;getDispatcher();
+$request = $container-&gt;get(&#39;request&#39;);
+$response = $dispatcher-&gt;dispatch($request-&gt;getMethod(), $request-&gt;getPathInfo());
+$response-&gt;send();</code></pre>
+<p>What this code does is create a router, adds the router to the container (just in case some other code in our application needs it for whatever reason), requires a file that will contain our routes, dispatches the request based on the http method and URI path, and finally sends the result to the client. We haven't made our routing file yet, so we should do it. We could put all of our routes in the <code>app.php</code> file, but to keep things a bit cleaner, we will do it in a separate file.</p>
+<p>Create a file named <code>routes.php</code> in the <code>config</code> directory. Add the following test code:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">use</span> Symfony\Component\HttpFoundation\Request<span class="ot">;</span>
+<span class="kw">use</span> Symfony\Component\HttpFoundation\Response<span class="ot">;</span>
+
+<span class="kw">$router</span>-&gt;addProcessor<span class="ot">(</span><span class="st">&#39;name&#39;</span><span class="ot">,</span> <span class="kw">function</span><span class="ot">(</span><span class="kw">$name</span><span class="ot">)</span> {
+    <span class="kw">return</span> <span class="fu">strtoupper</span><span class="ot">(</span><span class="kw">$name</span><span class="ot">);</span>
+}<span class="ot">);</span>
+
+<span class="kw">$router</span>-&gt;addRoute<span class="ot">(</span><span class="st">&#39;GET&#39;</span><span class="ot">,</span> <span class="st">&#39;/&#39;</span><span class="ot">,</span> <span class="kw">function</span><span class="ot">()</span> {
+    <span class="kw">return</span> <span class="st">&#39;This is the home page!&#39;</span><span class="ot">;</span>
+}<span class="ot">);</span>
+
+<span class="kw">$router</span>-&gt;addRoute<span class="ot">(</span><span class="st">&#39;GET&#39;</span><span class="ot">,</span> <span class="st">&#39;/hello/{name}&#39;</span><span class="ot">,</span> <span class="kw">function</span><span class="ot">(</span>Request <span class="kw">$request</span><span class="ot">,</span> <span class="kw">$name</span><span class="ot">)</span> {
+    <span class="kw">$response</span> = <span class="st">&#39;Hello there &#39;</span> . <span class="kw">$name</span> . <span class="st">&#39;.&lt;br&gt;&#39;</span><span class="ot">;</span>
+    <span class="kw">$response</span> .= <span class="st">&#39;The current path is &#39;</span> . <span class="kw">$request</span>-&gt;getPathInfo<span class="ot">();</span>
+    <span class="kw">return</span> <span class="kw">new</span> Response<span class="ot">(</span><span class="kw">$response</span><span class="ot">);</span>
+}<span class="ot">);</span></code></pre>
+<p>That should be all we need for our demonstration. However, PHP does not yet have a way to find our strategy class. Let's fix that.</p>
+<h3 id="autoloading-our-files">Autoloading our files</h3>
+<p>Composer makes it really easy for us to add our class files to its autoloader. Open up the <code>composer.json</code> which is at the root of our project. We should already have some content in there which composer has generated. We will add our autoloading configuration after the require object under an &quot;autoload&quot; key. Edit the file so that it looks like this:</p>
+<pre class="sourceCode json"><code class="sourceCode json">{
+    <span class="dt">&quot;require&quot;</span>: {
+        <span class="dt">&quot;league/container&quot;</span>: <span class="st">&quot;^1.3&quot;</span>,
+        <span class="dt">&quot;symfony/http-foundation&quot;</span>: <span class="st">&quot;^2.6&quot;</span>,
+        <span class="dt">&quot;league/route&quot;</span>: <span class="st">&quot;^1.1&quot;</span>
+    },
+    <span class="dt">&quot;autoload&quot;</span>: {
+        <span class="dt">&quot;psr-4&quot;</span>: {
+            <span class="dt">&quot;YourNamespace\\&quot;</span>: <span class="st">&quot;src/&quot;</span>
+        }
+    }
+}</code></pre>
+<p>Our files will be autoloading using the strategy defined in <a href="http://www.php-fig.org/psr/psr-4/">psr-4</a> outlined by the <a href="http://www.php-fig.org">PHP Framework Interop Group</a> (FIG). Fortunately, Composer knows exactly what it needs to do using this strategy to load our files.</p>
+<p>We need Composer to regenerate its autoload script so that it includes our classes.</p>
+<pre class="sourceCode php"><code class="sourceCode php">$ composer dump-autoload</code></pre>
+<p>Our classes will now be automatically loaded for us.</p>
+<h3 id="testing-things-out">Testing things out</h3>
+<p>If your development server isn't running, go ahead and run it. Navigate to <a href="http://localhost:8080">localhost:8080</a>. You should see 'This is the home page' in the browser. Next try going to <a href="http://localhost:8080/hello/somebody">localhost:8080/hello/somebody</a>. You should see something like this:</p>
+<div class="figure">
+<img src="images/hello-somebody2.png" alt="Hello Somebody" /><p class="caption">Hello Somebody</p>
+</div>
+<p>We have a router. Awesome. Don't forget to commit your changes!</p>

@@ -1,0 +1,295 @@
+<h2 id="templates-and-controllers">Templates and Controllers</h2>
+<p>PHP provides plenty of functionality on its own in terms of templating capability. However, templating engines do provide facilities that make constructing HTML content easier. If you want to use plain old php to generate your html, go right ahead and skip this section.</p>
+<p>There are several templating options available for templating in PHP, but for this tutorial I have decided to use <a href="https://github.com/nramenta/flow">Flow</a> which is based on the popular <a href="http://twig.sensiolabs.org/">Twig</a> templating engine. This tutorial won't cover all of Flow's features. Instead it will demonstrate how to integrate a templating engine into your application.</p>
+<p>By the end of this section, we should finally have some real content to display in the browser.</p>
+<h3 id="installing-a-templating-engine">Installing a templating engine</h3>
+<p>Naturally, the first thing we need to do is to include it in our application.</p>
+<pre class="sourceCode php"><code class="sourceCode php">$ composer require flow/flow</code></pre>
+<p>Now let's add some code to our <code>app.php</code> file. Let's put it after the code that registers the database, but before the code that registers the router.</p>
+<pre class="sourceCode php"><code class="sourceCode php">// register the templating engine in the container
+$container-&gt;singleton(&#39;templating_engine&#39;, function() {
+    $flow = new Flow\Loader([
+        &#39;source&#39; =&gt; dirname(__DIR__) . &#39;/templates&#39;,
+        &#39;target&#39; =&gt; dirname(__DIR__) . &#39;/cache/templates&#39;
+    ]);
+
+    return $flow;
+});
+
+// alias the templating entine with its class name
+$container-&gt;add(&#39;Flow\Loader&#39;, function() use ($container) {
+    return $container-&gt;get(&#39;templating_engine&#39;);
+});</code></pre>
+<p>While we are in the <code>app.php</code> file we should add one more thing to it that we are going to need. The container we are using allows us to register an interface that, for any class implementing this interface, will automatically call some action on it. We are about to make a base controller class which will need this functionality for everything to work smoothly. Add the following to the <code>app.php</code> file just after the code to create the container.</p>
+<pre class="sourceCode php"><code class="sourceCode php">// Add the container to itself
+$container-&gt;add(&#39;League\Container\ContainerInterface&#39;, $container);
+
+// Add an inflector for the container aware interface
+$container-&gt;inflector(&#39;League\Container\ContainerAwareInterface&#39;)
+          -&gt;invokeMethod(&#39;setContainer&#39;, [&#39;League\Container\ContainerInterface&#39;]);</code></pre>
+<p>Now any object created with the container that implements the container aware interface will have the container set for it.</p>
+<h3 id="controllers">Controllers</h3>
+<p>Before we play around with the templating engine, let's create a base controller class that our other controller classes can extend. Create new directory named <code>Controller</code> within the <code>src</code> directory. Within that directory create a file named <code>BaseController.php</code> with the following contents:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Controller<span class="ot">;</span>
+
+<span class="kw">use</span> League\Container\ContainerAwareInterface<span class="ot">;</span>
+<span class="kw">use</span> League\Container\ContainerAwareTrait<span class="ot">;</span>
+<span class="kw">use</span> Symfony\Component\HttpFoundation\RedirectResponse<span class="ot">;</span>
+
+<span class="kw">abstract</span> <span class="kw">class</span> BaseController <span class="kw">implements</span> ContainerAwareInterface
+{
+    <span class="co">// Let the library do the work for us</span>
+    <span class="kw">use</span> ContainerAwareTrait<span class="ot">;</span>
+
+   <span class="co">/**</span>
+    * <span class="co">Renders</span> <span class="co">a</span> <span class="co">template</span> <span class="co">with</span> <span class="co">the</span> <span class="co">data</span> <span class="co">and</span> <span class="co">returns</span> <span class="co">it</span> <span class="co">as</span> <span class="co">a</span> <span class="co">string</span>
+    <span class="co">*/</span>
+    <span class="kw">protected</span> <span class="kw">function</span> render<span class="ot">(</span><span class="kw">$template</span><span class="ot">,</span> <span class="kw">$context</span> = <span class="ot">[])</span>
+    {
+        <span class="kw">$templatingEngine</span> = <span class="kw">$this</span>-&gt;getContainer<span class="ot">()</span>
+                                 -&gt;get<span class="ot">(</span><span class="st">&#39;templating_engine&#39;</span><span class="ot">);</span>
+        <span class="kw">$template</span> = <span class="kw">$templatingEngine</span>-&gt;load<span class="ot">(</span><span class="kw">$template</span><span class="ot">);</span>
+        <span class="kw">return</span> <span class="kw">$template</span>-&gt;render<span class="ot">(</span><span class="kw">$context</span><span class="ot">);</span>
+    }
+
+   <span class="co">/**</span>
+    * <span class="co">Returns</span> <span class="co">a</span> <span class="co">redirect</span> <span class="co">response</span> <span class="co">from</span> <span class="co">a</span> <span class="co">local</span> <span class="co">path</span>
+    <span class="co">*/</span>
+    <span class="kw">protected</span> <span class="kw">function</span> redirect<span class="ot">(</span><span class="kw">$path</span><span class="ot">)</span>
+    {
+        <span class="kw">$host</span> = <span class="kw">$this</span>-&gt;getContainer<span class="ot">()</span>
+                    -&gt;get<span class="ot">(</span><span class="st">&#39;request&#39;</span><span class="ot">)</span>-&gt;session
+                    -&gt;get<span class="ot">(</span><span class="st">&#39;HTTP_HOST&#39;</span><span class="ot">);</span>
+
+        <span class="kw">$uri</span> = <span class="kw">$host</span> . <span class="kw">$uri</span><span class="ot">;</span>
+
+        <span class="kw">return</span> <span class="kw">new</span> RedirectResponse<span class="ot">(</span><span class="kw">$uri</span><span class="ot">);</span>
+    }
+}</code></pre>
+<p>Excellent. If we discover that there is functionality that all of our controllers need, we can always add it in this class.</p>
+<p>Let's create our first controller. We will make it to authentic users so they can log in to the site and write posts. This class will wire together a lot of the work we have done so far. Create an <code>AuthenticationController.php</code> file in the <code>Controller</code> directory with the following content:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">namespace</span> YourNamespace\Controller<span class="ot">;</span>
+
+<span class="kw">use</span> Symfony\Component\HttpFoundation\Request<span class="ot">;</span>
+
+<span class="kw">use</span> YourNamespace\Session<span class="ot">;</span>
+<span class="kw">use</span> YourNamespace\Database<span class="ot">;</span>
+
+
+<span class="kw">class</span> AuthenticationController <span class="kw">extends</span> BaseController
+{
+    <span class="kw">public</span> <span class="kw">function</span> login<span class="ot">(</span>Request <span class="kw">$request</span><span class="ot">,</span> Session <span class="kw">$session</span><span class="ot">,</span> <span class="fu">array</span> <span class="kw">$data</span> = <span class="ot">[])</span>
+    {
+        <span class="co">// make sure the user isn&#39;t already logged in</span>
+        <span class="co">// if they are, redirect to the home page</span>
+        <span class="kw">if</span> <span class="ot">(</span><span class="kw">$session</span>-&gt;userIsLoggedIn<span class="ot">())</span> {
+            <span class="kw">return</span> <span class="kw">$this</span>-&gt;redirect<span class="ot">(</span><span class="st">&#39;/&#39;</span><span class="ot">);</span>
+        }
+
+        <span class="co">// get previous form submission data if there is any</span>
+        <span class="kw">$remembered</span> = <span class="fu">isset</span><span class="ot">(</span><span class="kw">$data</span><span class="ot">[</span><span class="st">&#39;formData&#39;</span><span class="ot">])</span> <span class="ot">?</span> <span class="kw">$data</span><span class="ot">[</span><span class="st">&#39;formData&#39;</span><span class="ot">]</span> <span class="ot">:</span> <span class="ot">[];</span>
+        <span class="kw">$error</span> = <span class="fu">isset</span><span class="ot">(</span><span class="kw">$data</span><span class="ot">[</span><span class="st">&#39;formError&#39;</span><span class="ot">])</span> <span class="ot">?</span> <span class="kw">$data</span><span class="ot">[</span><span class="st">&#39;formError&#39;</span><span class="ot">]</span> <span class="ot">:</span> <span class="st">&#39;&#39;</span><span class="ot">;</span>
+        <span class="kw">$context</span> = <span class="ot">[</span>
+            <span class="st">&#39;user&#39;</span> =&gt; <span class="kw">$remembered</span><span class="ot">,</span>
+            <span class="st">&#39;error&#39;</span> =&gt; <span class="kw">$error</span>
+        <span class="ot">];</span>
+
+        <span class="kw">return</span> <span class="kw">$this</span>-&gt;render<span class="ot">(</span><span class="st">&#39;authentication/login.flow.html&#39;</span><span class="ot">,</span> <span class="kw">$context</span><span class="ot">);</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> doLogin<span class="ot">(</span>Request <span class="kw">$request</span><span class="ot">,</span> Session <span class="kw">$session</span><span class="ot">,</span> Database <span class="kw">$database</span><span class="ot">)</span>
+    {
+        <span class="co">// get the form inputs</span>
+        <span class="kw">$email</span> = <span class="kw">$request</span>-&gt;request-&gt;get<span class="ot">(</span><span class="st">&#39;email&#39;</span><span class="ot">);</span>
+        <span class="kw">$password</span> = <span class="kw">$request</span>-&gt;request-&gt;get<span class="ot">(</span><span class="st">&#39;password&#39;</span><span class="ot">);</span>
+
+        <span class="co">// look for a user with the given email</span>
+        <span class="kw">$user</span> = <span class="kw">$database</span>-&gt;findOne<span class="ot">(</span><span class="st">&#39;user&#39;</span><span class="ot">,</span> <span class="st">&#39; email = ? &#39;</span><span class="ot">,</span> <span class="ot">[</span><span class="kw">$email</span><span class="ot">]);</span>
+
+        <span class="kw">if</span> <span class="ot">(</span>!<span class="kw">$user</span><span class="ot">)</span> {
+            <span class="kw">return</span> <span class="kw">$this</span>-&gt;login<span class="ot">(</span><span class="kw">$request</span><span class="ot">,</span> <span class="kw">$session</span><span class="ot">,</span> <span class="ot">[</span>
+                <span class="st">&#39;formData&#39;</span> =&gt; <span class="ot">[</span><span class="st">&#39;email&#39;</span> =&gt; <span class="kw">$email</span><span class="ot">],</span>
+                <span class="st">&#39;formError&#39;</span> =&gt; <span class="st">&#39;There is no user with that email&#39;</span>
+            <span class="ot">]);</span>
+        }
+
+        <span class="co">// check the password</span>
+        <span class="kw">$isAuthenticated</span> = <span class="kw">$user</span>-&gt;passwordIsCorrect<span class="ot">(</span><span class="kw">$password</span><span class="ot">);</span>
+        <span class="kw">if</span> <span class="ot">(</span>!<span class="kw">$isAuthenticated</span><span class="ot">)</span> {
+            <span class="kw">return</span> <span class="kw">$this</span>-&gt;login<span class="ot">(</span><span class="kw">$request</span><span class="ot">,</span> <span class="kw">$session</span><span class="ot">,</span> <span class="ot">[</span>
+                <span class="st">&#39;formData&#39;</span> =&gt; <span class="ot">[</span><span class="st">&#39;email&#39;</span> =&gt; <span class="kw">$email</span><span class="ot">],</span>
+                <span class="st">&#39;formError&#39;</span> =&gt; <span class="st">&#39;That password is not valid&#39;</span>
+            <span class="ot">]);</span>
+        }
+
+        <span class="co">// the user knew their password!</span>
+        <span class="kw">$session</span>-&gt;setUser<span class="ot">(</span><span class="kw">$user</span><span class="ot">);</span>
+        <span class="kw">return</span> <span class="kw">$this</span>-&gt;redirect<span class="ot">(</span><span class="st">&#39;/&#39;</span><span class="ot">);</span>
+    }
+
+    <span class="kw">public</span> <span class="kw">function</span> logout<span class="ot">(</span>Session <span class="kw">$session</span><span class="ot">)</span>
+    {
+        <span class="kw">$session</span>-&gt;invalidate<span class="ot">();</span>
+        <span class="kw">return</span> <span class="kw">$this</span>-&gt;redirect<span class="ot">(</span><span class="st">&#39;/login&#39;</span><span class="ot">);</span>
+    }
+}</code></pre>
+<p>This controller has methods for loading a login form, handling an attempted login, as well as logging out the user. The controller utilizes the User model class that we created as well as the Session class we created. However, our app does not yet have any way to find these methods. We need to add routes for these methods.</p>
+<p>Open up your <code>config/routes.php</code> file, remove the existing contents, and replace them with the following:</p>
+<pre class="sourceCode php"><code class="sourceCode php"><span class="kw">&lt;?php</span>
+
+<span class="kw">$router</span>-&gt;get<span class="ot">(</span><span class="st">&#39;/login&#39;</span><span class="ot">,</span> <span class="st">&#39;YourNamespace\Controller\AuthenticationController::login&#39;</span><span class="ot">);</span>
+<span class="kw">$router</span>-&gt;post<span class="ot">(</span><span class="st">&#39;/login&#39;</span><span class="ot">,</span> <span class="st">&#39;YourNamespace\Controller\AuthenticationController::doLogin&#39;</span><span class="ot">);</span>
+<span class="kw">$router</span>-&gt;get<span class="ot">(</span><span class="st">&#39;/logout&#39;</span><span class="ot">,</span> <span class="st">&#39;YourNamespace\Controller\AuthenticationController::logout&#39;</span><span class="ot">);</span></code></pre>
+<p>This registers the three methods we made as routes. If you go to these routes now they won't work, becauase we haven't created the template we need for the login page. Let's do that now.</p>
+<p>Before we create the login form template, let's create a base template. Some templating platforms, including the one we are using in this tutorial, allow templates to extend one another allowing for a great amount of code reuse.</p>
+<p>Create a file named <code>base.flow.html</code> in the <code>templates</code> directory in the root of the project. Put this in it:</p>
+<pre class="sourceCode html"><code class="sourceCode html"><span class="er">&lt;</span>!doctype html&gt;
+<span class="kw">&lt;html&gt;</span>
+<span class="kw">&lt;head&gt;</span>
+    <span class="kw">&lt;meta</span><span class="ot"> charset=</span><span class="st">&quot;utf-8&quot;</span><span class="kw">&gt;</span>
+    <span class="kw">&lt;title&gt;</span>{% block title %}{{ pageTitle or &quot;My Blog&quot; }}{% endblock %}<span class="kw">&lt;/title&gt;</span>
+    {% block styleSheets %}{% endblock %}
+    {% block javaScripts %}{% endblock %}
+<span class="kw">&lt;/head&gt;</span>
+<span class="kw">&lt;body&gt;</span>
+    {% block body %}{% endblock %}
+<span class="kw">&lt;/body&gt;</span>
+<span class="kw">&lt;/html&gt;</span></code></pre>
+<p>That gets rid of some very basic boilerplate. Now we can create our login form. I'm not worrying too much about styles for this tutorial, so it ain't going to look good (sorry).</p>
+<p>Create a new directory named <code>authentication</code> in the templates directory. In this directory create a file named <code>login.flow.html</code>. In this file, we will extend the base template and add a form for the user to login with.</p>
+<pre class="sourceCode html"><code class="sourceCode html">{% extends &quot;../base.flow.html&quot; %}
+
+{% block title %}Login | MyBlog{% endblock %}
+
+{% block body %}
+    {% if error %}
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;error&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;p&gt;</span>{{error}}<span class="kw">&lt;/p&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+    {% endif %}
+    <span class="kw">&lt;form</span><span class="ot"> method=</span><span class="st">&quot;POST&quot;</span><span class="kw">&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;email&quot;</span><span class="kw">&gt;</span>Email:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;text&quot;</span><span class="ot"> name=</span><span class="st">&quot;email&quot;</span><span class="ot"> id=</span><span class="st">&quot;email&quot;</span><span class="ot"> value=</span><span class="st">&quot;{{user.email}}&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;password&quot;</span><span class="kw">&gt;</span>Password:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;password&quot;</span><span class="ot"> name=</span><span class="st">&quot;password&quot;</span><span class="ot"> id=</span><span class="st">&quot;password&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input buttons&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;submit&quot;</span><span class="ot"> value=</span><span class="st">&quot;Login&quot;</span><span class="kw">&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+    <span class="kw">&lt;/form&gt;</span>
+{% endblock %}</code></pre>
+<p>Awesome. We can now see something real and even use it...kinda. If you navigate to <a href="http://localhost:8080/login">localhost:8080/login</a> (assuming your development server is running) you can see the login form. You can even submit it, though you'll never be able to successfully login since there are no users. Let's fix that.</p>
+<p>Let's add two more methods to the controller we just made.</p>
+<pre class="sourceCode php"><code class="sourceCode php">public function register(Session $session, $data = []) {
+        // make sure the user isn&#39;t already logged in
+        if ($session-&gt;userIsLoggedIn()) {
+            return $this-&gt;redirect(&#39;/&#39;);
+        }
+
+        // get previous form submission data if there is any
+        $remembered = isset($data[&#39;formData&#39;]) ? $data[&#39;formData&#39;] : [];
+        $error = isset($data[&#39;formError&#39;]) ? $data[&#39;formError&#39;] : &#39;&#39;;
+        $context = [
+            &#39;user&#39; =&gt; $remembered,
+            &#39;error&#39; =&gt; $error
+        ];
+
+        return $this-&gt;render(&#39;authentication/register.flow.html&#39;, $context);
+
+    }
+
+    public function doRegister(Request $request, Session $session, Database $database) {
+        $email = $request-&gt;request-&gt;get(&#39;email&#39;);
+        $name = $request-&gt;request-&gt;get(&#39;name&#39;);
+        $password = $request-&gt;request-&gt;get(&#39;password&#39;);
+        $passwordAgain = $request-&gt;request-&gt;get(&#39;password_again&#39;);
+
+        $error = &#39;&#39;;
+        if (!$email) {
+            $error = &#39;Email is required&#39;;
+        } else if (!$name) {
+            $error = &#39;Name is required&#39;;
+        } else if (!$password) {
+            $error =&#39;Password is required&#39;;
+        } else if ($password != $passwordAgain) {
+            $error = &#39;Passwords do not match&#39;;
+        } else if ($database-&gt;findOne(&#39;user&#39;, &#39; email = ? &#39;, [$email])) {
+            $error = &#39;A user with that email already exists&#39;;
+        }
+
+        if ($error) {
+            return $this-&gt;register($session, [
+                &#39;formError&#39; =&gt; $error,
+                &#39;formData&#39; =&gt; [
+                    &#39;name&#39; =&gt; $name,
+                    &#39;email&#39; =&gt; $email
+                ]
+            ]);
+        }
+
+        $user = $database-&gt;dispense(&#39;user&#39;);
+        $user-&gt;name = $name;
+        $user-&gt;email = $email;
+        $user-&gt;setPassword($password);
+        $database-&gt;store($user);
+
+        $session-&gt;setUser($user);
+
+        return $this-&gt;redirect(&#39;/&#39;);
+    }</code></pre>
+<p>And now let's make the template for the registration form at <code>templates/authentication/register.flow.html</code>.</p>
+<pre class="sourceCode html"><code class="sourceCode html">{% extends &quot;../base.flow.html&quot; %}
+
+{% block title %}Register | MyBlog{% endblock %}
+
+{% block body %}
+    {% if error %}
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;error&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;p&gt;</span>{{error}}<span class="kw">&lt;/p&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+    {% endif %}
+    <span class="kw">&lt;form</span><span class="ot"> method=</span><span class="st">&quot;POST&quot;</span><span class="kw">&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;email&quot;</span><span class="kw">&gt;</span>Email:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;text&quot;</span><span class="ot"> name=</span><span class="st">&quot;email&quot;</span><span class="ot"> id=</span><span class="st">&quot;email&quot;</span><span class="ot"> value=</span><span class="st">&quot;{{user.email}}&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;name&quot;</span><span class="kw">&gt;</span>Your Name:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;text&quot;</span><span class="ot"> name=</span><span class="st">&quot;name&quot;</span><span class="ot"> id=</span><span class="st">&quot;name&quot;</span><span class="ot"> value=</span><span class="st">&quot;{{user.name}}&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;password&quot;</span><span class="kw">&gt;</span>Password:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;password&quot;</span><span class="ot"> name=</span><span class="st">&quot;password&quot;</span><span class="ot"> id=</span><span class="st">&quot;password&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;label</span><span class="ot"> for=</span><span class="st">&quot;password&quot;</span><span class="kw">&gt;</span>Password Again:
+                <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;password&quot;</span><span class="ot"> name=</span><span class="st">&quot;password_again&quot;</span><span class="ot"> id=</span><span class="st">&quot;password_again&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;/label&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;input buttons&quot;</span><span class="kw">&gt;</span>
+            <span class="kw">&lt;input</span><span class="ot"> type=</span><span class="st">&quot;submit&quot;</span><span class="ot"> value=</span><span class="st">&quot;Register&quot;</span><span class="kw">&gt;</span>
+        <span class="kw">&lt;/div&gt;</span>
+    <span class="kw">&lt;/form&gt;</span>
+{% endblock %}</code></pre>
+<p>Finally, let's add the registration routes to the application as well as a stub home route.</p>
+<pre class="sourceCode php"><code class="sourceCode php">$router-&gt;get(&#39;/register&#39;, &#39;YourNamespace\Controller\AuthenticationController::register&#39;);
+$router-&gt;post(&#39;/register&#39;, &#39;YourNamespace\Controller\AuthenticationController::doRegister&#39;);
+
+$router-&gt;get(&#39;/&#39;, function(){
+    return &#39;made it home&#39;;
+});</code></pre>
+<p>You should now be able to register a user and login successfully. Test it out.</p>
+<p>At this point we have pretty much everything we need to finish our sample application. The next section will show you how to get the app up on Heroku. The main objective of this tutorial has been accomplished. I may finish the app in another tutorial.</p>
+<p>Make a commit before your continue.</p>
