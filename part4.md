@@ -1,6 +1,5 @@
 # How to properly set up a PHP application with composer and deploy it to Heroku - Part 4
 
-
 ## HTTP Request and Response
 
 PHP provides information about the current request in the `$_POST`, `$_GET`, and other global variables.  While this is convenient, we want to deal with all this in a more object oriented fashion.  A popular component for doing this is the [HttpFoundation](http://symfony.com/doc/current/components/http_foundation/index.html) component created by the team behind the Symfony framework.  Let's install it.
