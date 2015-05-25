@@ -1,0 +1,1 @@
+# How to properly set up a PHP application with composer and deploy it to Heroku - Part 4
